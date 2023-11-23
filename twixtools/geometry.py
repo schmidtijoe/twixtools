@@ -1,5 +1,8 @@
 #!/usr/bin/python
 import numpy as np
+import logging
+
+log_module = logging.getLogger(__name__)
 
 internal_os = 2
 pcs_directions = ["dSag", "dCor", "dTra"]
@@ -53,7 +56,7 @@ class Geometry:
             self.dims = None
 
         if len(twix["hdr"]["MeasYaps"]["sSliceArray"]["asSlice"]) > 1:
-            print("WARNING more than one slice. Taking first one..")
+            log_module.warning("more than one slice. Taking first one..")
 
         self.fov = [
             twix["hdr"]["MeasYaps"]["sSliceArray"]["asSlice"][0]["dReadoutFOV"]
@@ -106,9 +109,9 @@ class Geometry:
         # find main direction of normal vector for first part of rot matrix
         maindir = np.argmax(np.abs(self.normal))
         if maindir == 0:
-            init_mat = [[0, 0, 1], [0, 1, 0], [-1, 0, 0]]  # @ mat // inplane mat
+            init_mat = np.array([[0, 0, 1], [0, 1, 0], [-1, 0, 0]])  # @ mat // inplane mat
         elif maindir == 1:
-            init_mat = [[0, 1, 0], [0, 0, 1], [1, 0, 0]]
+            init_mat = np.array([[0, 1, 0], [0, 0, 1], [1, 0, 0]])
         else:
             init_mat = np.eye(3)
 
@@ -121,7 +124,7 @@ class Geometry:
         s = np.linalg.norm(v)
         c = np.dot(init_normal, self.normal)
 
-        if s <= 0.00001:
+        if s <= 1e-5:
             # we have cosine 1 or -1, two vectors are (anti-) parallel
             mat = np.matmul(np.eye(3) * c, init_mat)
         else:

@@ -9,12 +9,14 @@ import os
 import re
 import numpy as np
 from tqdm import tqdm
-
+import logging
 import twixtools.twixprot as twixprot
 import twixtools.helpers as helpers
 import twixtools.mdb
 import twixtools.hdr_def as hdr_def
 import twixtools.geometry
+
+log_module = logging.getLogger(__name__)
 
 
 def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
@@ -62,11 +64,12 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
         infile = [f for f in os.listdir('.') if re.search(
             r'^meas_MID0*' + str(measID) + r'.*\.dat$', f)]
         if len(infile) == 0:
-            print('error: .dat file with measID', measID, 'not found')
-            raise ValueError
+            err = f"error: .dat file with measID: {measID} not found"
+            log_module.error(err)
+            raise ValueError(err)
         elif len(infile) > 1:
-            print('multiple files with measID', measID,
-                  'found, choosing first occurence')
+            warn = f'multiple files with measID: {measID} found, choosing first occurence'
+            log_module.warning(warn)
         infile = infile[0]
 
     infile = os.path.realpath(infile)
@@ -80,7 +83,7 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
     # lazy software version check (VB or VD?)
     if version_is_ve:
         if verbose:
-            print('Software version: VD/VE (!?)')
+            log_module.info(f'Software version: VD/VE (!?)')
         fid.seek(0, os.SEEK_SET)  # move pos to 9th byte in file
         raidfile_hdr = np.fromfile(fid, dtype=hdr_def.MultiRaidFileHeader,
                                    count=1)[0]
@@ -99,7 +102,7 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
         # in VB versions, the first 4 bytes indicate the beginning of the
         # raw data part of the file
         if verbose:
-            print('Software  : VB (!?)')
+            log_module.info('Software  : VB (!?)')
         # VB does not support multiple scans in one file:
         measOffset = [np.uint64(0)]
         measLength = [fileSize]
@@ -112,7 +115,7 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
         include_scans = [range(NScans)[k] for k in include_scans]
 
     if verbose:
-        print('')
+        log_module.info('processing scans')
 
     for s in range(NScans):
         if include_scans is not None and s not in include_scans:
@@ -147,14 +150,14 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
         pos = measOffset[s] + np.uint64(hdr_len)
 
         if verbose:
-            print('Scan ', s)
+            log_module.info(f'Scan {s}')
             progress_bar = tqdm(total=scanEnd - pos, unit='B', unit_scale=True, unit_divisor=1024)
         while pos + 128 < scanEnd:  # fail-safe not to miss ACQEND
             fid.seek(pos, os.SEEK_SET)
             try:
                 mdb = twixtools.mdb.Mdb(fid, version_is_ve)
             except ValueError:
-                print(f"WARNING: Mdb parsing encountered an error at file position {pos}/{scanEnd}, stopping here.")
+                log_module.error(f"WARNING: Mdb parsing encountered an error at file position {pos}/{scanEnd}, stopping here.")
 
             # jump to mdh of next scan
             pos += mdb.dma_len
@@ -232,7 +235,7 @@ def write_twix(scanlist, outfile, version_is_ve=True):
                         fid.write(mdb.data)
                         if mdb.is_flag_set('ACQEND')\
                                 and mdb is not scan['mdb'][-1]:
-                            print("WARNING: Early ACQEND detected, skipping some data during write.")
+                            log_module.warning("WARNING: Early ACQEND detected, skipping some data during write.")
                             break
                     else:
                         data = np.atleast_2d(mdb.data)
@@ -248,7 +251,7 @@ def write_twix(scanlist, outfile, version_is_ve=True):
                         data[c].tofile(fid)
 
             if not mdb.is_flag_set('ACQEND'):
-                print("ACQEND missing at the end of the mdb list. Generating new one.")
+                log_module.warning("ACQEND missing at the end of the mdb list. Generating new one.")
                 acqend = twixtools.mdb.Mdb_local()
                 acqend.add_flag('ACQEND')
                 acqend.mdh.ScanCounter = mdb.mdh.ScanCounter + 1

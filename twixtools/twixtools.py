@@ -98,6 +98,9 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
         for k in range(NScans):
             measOffset.append(raidfile_hdr['entry'][k]['off_'])
             measLength.append(raidfile_hdr['entry'][k]['len_'])
+        if measLength.__len__() < 2 and measLength[0] == 0:
+            # strange mismatch in pulseq .dat files
+            measLength = [fileSize]
     else:
         # in VB versions, the first 4 bytes indicate the beginning of the
         # raw data part of the file
